@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Ebi Fry - Dashboard Stok</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            box-sizing: border-box;
+        }
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease-in-out;
+        }
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        /* Mobile-first responsive design */
+        @media (max-width: 768px) {
+            .mobile-stack {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            .mobile-full {
+                width: 100%;
+            }
+            .mobile-text-sm {
+                font-size: 0.875rem;
+            }
+            .mobile-p-4 {
+                padding: 1rem;
+            }
+            .mobile-hidden {
+                display: none;
+            }
+            .mobile-scroll {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+        
+        /* Professional shadows and borders */
+        .card-shadow {
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+        .card-shadow-lg {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        /* Professional button styles */
+        .btn-professional {
+            transition: all 0.2s ease-in-out;
+            font-weight: 500;
+            letter-spacing: 0.025em;
+        }
+        .btn-professional:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* Professional table styles */
+        .table-professional {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        .table-professional th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .table-professional td {
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .table-professional tr:hover {
+            background-color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+    
+    <!-- Chart Modal -->
+    <div id="chartModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                    <h2 class="text-2xl font-bold text-gray-800">📊 Analytics Dashboard</h2>
+                    <button id="closeChart" class="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-gray-50 rounded-xl p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">📈 Distribusi Stok per Brand</h3>
+                            <canvas id="brandChart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="bg-gray-50 rounded-xl p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">🎯 Status Stok</h3>
+                            <canvas id="stockChart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-gray-50 rounded-xl p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">📊 Trend Stok Bulanan</h3>
+                            <canvas id="trendChart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="bg-gray-50 rounded-xl p-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">🏆 Top 5 Brand</h3>
+                            <canvas id="topBrandChart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Modal -->
+    <div id="tableModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                    <h2 class="text-2xl font-bold text-gray-800">📋 Data Lengkap Ebi Fry</h2>
+                    <button id="closeTable" class="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+                </div>
+                <div class="p-6">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Detail MC</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Excel</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand Size</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assortment</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ETD 1</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Shipment Plan</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ETD 2</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lama</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PR</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Polos</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Karantina</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estimasi</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Detail</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fullTableBody" class="bg-white divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+                    <h2 class="text-2xl font-bold text-gray-800">📝 Detail Item</h2>
+                    <button id="closeDetail" class="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+                </div>
+                <div id="detailContent" class="p-6">
+                    <!-- Detail content will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 card-shadow-lg rounded-2xl mobile-p-4 p-8 mb-6 text-white relative overflow-hidden">
+            <!-- Background Pattern -->
+            <div class="absolute inset-0 opacity-10">
+                <div class="absolute top-0 left-0 w-32 h-32 bg-white rounded-full -translate-x-16 -translate-y-16"></div>
+                <div class="absolute bottom-0 right-0 w-24 h-24 bg-white rounded-full translate-x-12 translate-y-12"></div>
+                <div class="absolute top-1/2 right-1/4 w-16 h-16 bg-white rounded-full"></div>
+            </div>
+            
+            <div class="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-6 lg:space-y-0">
+                <div class="text-center lg:text-left">
+                    <h1 class="text-3xl lg:text-4xl font-bold mb-3 flex items-center justify-center lg:justify-start">
+                        <span class="mr-4 text-4xl lg:text-5xl">🍤</span>
+                        <div>
+                            <div>Monitoring Ebi Fry</div>
+                            <div class="text-lg lg:text-xl font-normal text-blue-100 mt-1">Dashboard Professional</div>
+                        </div>
+                    </h1>
+                    <p class="text-blue-100 mobile-text-sm lg:text-base"> </p>
+                    <div id="lastUpdate" class="text-xs text-blue-200 mt-3 bg-white bg-opacity-20 inline-block px-3 py-1 rounded-full"></div>
+                </div>
+                <div class="flex flex-wrap items-center justify-center lg:justify-end gap-2 lg:gap-3">
+                    <button id="tableBtn" class="btn-professional bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm text-white border border-white border-opacity-30 px-4 py-3 rounded-xl flex items-center space-x-2 text-sm mobile-full lg:w-auto transition-all duration-200">
+                        <span>📋</span>
+                        <span class="mobile-hidden lg:inline">Tabel Lengkap</span>
+                        <span class="lg:hidden">Tabel</span>
+                    </button>
+                    <button id="chartBtn" class="btn-professional bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm text-white border border-white border-opacity-30 px-4 py-3 rounded-xl flex items-center space-x-2 text-sm mobile-full lg:w-auto transition-all duration-200">
+                        <span>📈</span>
+                        <span class="mobile-hidden lg:inline">Analytics</span>
+                        <span class="lg:hidden">Chart</span>
+                    </button>
+                    <button id="exportPdfBtn" class="btn-professional bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm text-white border border-white border-opacity-30 px-4 py-3 rounded-xl flex items-center space-x-2 text-sm mobile-full lg:w-auto transition-all duration-200">
+                        <span>📄</span>
+                        <span class="mobile-hidden lg:inline">Export PDF</span>
+                        <span class="lg:hidden">PDF</span>
+                    </button>
+                    <button id="exportBtn" class="btn-professional bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm text-white border border-white border-opacity-30 px-4 py-3 rounded-xl flex items-center space-x-2 text-sm mobile-full lg:w-auto transition-all duration-200">
+                        <span>📊</span>
+                        <span class="mobile-hidden lg:inline">Export Excel</span>
+                        <span class="lg:hidden">Excel</span>
+                    </button>
+                    <button id="refreshBtn" class="btn-professional bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm text-white border border-white border-opacity-30 px-4 py-3 rounded-xl flex items-center space-x-2 text-sm mobile-full lg:w-auto transition-all duration-200">
+                        <span id="refreshIcon">🔄</span>
+                        <span class="mobile-hidden lg:inline">Refresh Data</span>
+                        <span class="lg:hidden">Refresh</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-6">
+            <div class="bg-gradient-to-br from-blue-500 to-blue-600 card-shadow-lg rounded-2xl mobile-p-4 p-6 text-white relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-20 h-20 bg-white bg-opacity-10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div class="relative z-10 flex items-center justify-between">
+                    <div>
+                        <p class="text-blue-100 text-xs lg:text-sm font-medium">Total Items</p>
+                        <p id="totalItems" class="text-xl lg:text-3xl font-bold">-</p>
+                        <div class="text-xs text-blue-200 mt-1">📦 Semua produk</div>
+                    </div>
+                    <div class="bg-white bg-opacity-20 p-3 lg:p-4 rounded-2xl backdrop-blur-sm">
+                        <span class="text-2xl lg:text-3xl">📦</span>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gradient-to-br from-green-500 to-green-600 card-shadow-lg rounded-2xl mobile-p-4 p-6 text-white relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-20 h-20 bg-white bg-opacity-10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div class="relative z-10 flex items-center justify-between">
+                    <div>
+                        <p class="text-green-100 text-xs lg:text-sm font-medium">Total Stock</p>
+                        <p id="totalStock" class="text-xl lg:text-3xl font-bold">-</p>
+                        <div class="text-xs text-green-200 mt-1">📊 Unit tersedia</div>
+                    </div>
+                    <div class="bg-white bg-opacity-20 p-3 lg:p-4 rounded-2xl backdrop-blur-sm">
+                        <span class="text-2xl lg:text-3xl">📊</span>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gradient-to-br from-red-500 to-red-600 card-shadow-lg rounded-2xl mobile-p-4 p-6 text-white relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-20 h-20 bg-white bg-opacity-10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div class="relative z-10 flex items-center justify-between">
+                    <div>
+                        <p class="text-red-100 text-xs lg:text-sm font-medium">Low Stock</p>
+                        <p id="lowStock" class="text-xl lg:text-3xl font-bold">-</p>
+                        <div class="text-xs text-red-200 mt-1">⚠️ Perlu restock</div>
+                    </div>
+                    <div class="bg-white bg-opacity-20 p-3 lg:p-4 rounded-2xl backdrop-blur-sm">
+                        <span class="text-2xl lg:text-3xl">⚠️</span>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gradient-to-br from-purple-500 to-purple-600 card-shadow-lg rounded-2xl mobile-p-4 p-6 text-white relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-20 h-20 bg-white bg-opacity-10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div class="relative z-10 flex items-center justify-between">
+                    <div>
+                        <p class="text-purple-100 text-xs lg:text-sm font-medium">Brands</p>
+                        <p id="totalBrands" class="text-xl lg:text-3xl font-bold">-</p>
+                        <div class="text-xs text-purple-200 mt-1">🏷️ Brand aktif</div>
+                    </div>
+                    <div class="bg-white bg-opacity-20 p-3 lg:p-4 rounded-2xl backdrop-blur-sm">
+                        <span class="text-2xl lg:text-3xl">🏷️</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <!-- Quick Search Bar -->
+        <div class="bg-white card-shadow-lg rounded-xl mobile-p-4 p-6 mb-6">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+                <div class="flex-1 lg:max-w-md">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-gray-400 text-lg">🔍</span>
+                        </div>
+                        <input type="text" id="searchInput" placeholder="Cari semua data..." class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-all duration-200">
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button id="filterToggle" class="btn-professional bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl flex items-center space-x-2 text-sm transition-all duration-200">
+                        <span>⚙️</span>
+                        <span>Filter & Sort</span>
+                        <span id="filterToggleIcon" class="transform transition-transform duration-200">▼</span>
+                    </button>
+                    <div class="text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-xl">
+                        <span id="showingCount" class="font-semibold text-blue-600">0</span> / <span id="totalCount" class="font-semibold text-gray-800">0</span> item
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Filters (Collapsible) -->
+        <div id="advancedFilters" class="bg-white card-shadow rounded-xl mobile-p-4 p-6 mb-6 hidden">
+            <div class="border-l-4 border-blue-500 pl-4 mb-6">
+                <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                    <span class="mr-2">🎯</span>
+                    Filter & Sort
+                </h3>
+                <p class="text-sm text-gray-600 mt-1"> untuk pencarian yang lebih spesifik</p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Brand Filter -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-gray-700 flex items-center">
+                        <span class="mr-2">🏷️</span>
+                        Filter Brand
+                    </label>
+                    <select id="brandFilter" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-all duration-200">
+                        <option value="">Semua Brand</option>
+                    </select>
+                </div>
+
+                <!-- Sort By -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-gray-700 flex items-center">
+                        <span class="mr-2">📊</span>
+                        Urutkan Berdasarkan
+                    </label>
+                    <select id="sortBy" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-all duration-200">
+                        <option value="brand">Brand</option>
+                        <option value="stock">Stok</option>
+                        <option value="total">Total</option>
+                        <option value="etd">ETD</option>
+                    </select>
+                </div>
+
+                <!-- Sort Order -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-semibold text-gray-700 flex items-center">
+                        <span class="mr-2">🔄</span>
+                        Urutan
+                    </label>
+                    <select id="sortOrder" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-all duration-200">
+                        <option value="asc">A-Z / Rendah-Tinggi</option>
+                        <option value="desc">Z-A / Tinggi-Rendah</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Quick Filter Buttons -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                <label class="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                    <span class="mr-2">⚡</span>
+                    Filter Cepat
+                </label>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="quickFilter('low')" class="btn-professional bg-red-100 hover:bg-red-200 text-red-700 px-3 py-2 rounded-xl text-sm">
+                        🔴 Stok Rendah
+                    </button>
+                    <button onclick="quickFilter('medium')" class="btn-professional bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-2 rounded-xl text-sm">
+                        🟡 Stok Sedang
+                    </button>
+                    <button onclick="quickFilter('high')" class="btn-professional bg-green-100 hover:bg-green-200 text-green-700 px-3 py-2 rounded-xl text-sm">
+                        🟢 Stok Tinggi
+                    </button>
+                    <button onclick="quickFilter('all')" class="btn-professional bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm">
+                        🔄 Tampilkan Semua
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="bg-white card-shadow-lg rounded-2xl overflow-hidden">
+            <div class="mobile-p-4 p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 via-blue-50 to-purple-50">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg lg:text-xl font-bold text-gray-800 flex items-center">
+                        <span class="mr-3 text-2xl">📋</span>
+                        <div>
+                            <div>Data Stok Ebi Fry</div>
+                            <div class="text-sm font-normal text-gray-600 mt-1">Tabel monitoring real-time</div>
+                        </div>
+                    </h2>
+                    <div class="hidden lg:flex items-center space-x-2 text-sm text-gray-600">
+                        <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">Live Data</span>
+                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    </div>
+                </div>
+            </div>
+            <div id="loadingState" class="flex items-center justify-center p-16">
+                <div class="text-center">
+                    <div class="loading-spinner mx-auto mb-4"></div>
+                    <span class="text-gray-600 font-medium">Memuat data...</span>
+                    <p class="text-sm text-gray-500 mt-2">Mengambil data terbaru dari server</p>
+                </div>
+            </div>
+            <div id="errorState" class="hidden p-16 text-center">
+                <div class="text-6xl mb-4">😞</div>
+                <div class="text-red-500 text-xl font-bold mb-2">Gagal memuat data</div>
+                <p class="text-gray-600 mb-6">Periksa koneksi internet atau coba lagi nanti</p>
+                <button onclick="loadData()" class="btn-professional bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium">
+                    🔄 Coba Lagi
+                </button>
+            </div>
+            <div id="tableContainer" class="hidden mobile-scroll">
+                <table class="w-full table-professional">
+                    <thead>
+                        <tr>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-purple-700 transition-all duration-200" onclick="sortTable('brand')">
+                                <div class="flex items-center space-x-2">
+                                    <span>🏷️</span>
+                                    <span>Brand</span>
+                                    <span id="brandSort" class="text-white text-opacity-70">↕️</span>
+                                </div>
+                            </th>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider mobile-hidden">
+                                <div class="flex items-center space-x-2">
+                                    <span>📏</span>
+                                    <span>Size</span>
+                                </div>
+                            </th>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider mobile-hidden">
+                                <div class="flex items-center space-x-2">
+                                    <span>📝</span>
+                                    <span>Order</span>
+                                </div>
+                            </th>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-purple-700 transition-all duration-200" onclick="sortTable('stock')">
+                                <div class="flex items-center space-x-2">
+                                    <span>📊</span>
+                                    <span>Stock</span>
+                                    <span id="stockSort" class="text-white text-opacity-70">↕️</span>
+                                </div>
+                            </th>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider mobile-hidden">
+                                <div class="flex items-center space-x-2">
+                                    <span>📅</span>
+                                    <span>ETD</span>
+                                </div>
+                            </th>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">
+                                <div class="flex items-center space-x-2">
+                                    <span>🎯</span>
+                                    <span>Status</span>
+                                </div>
+                            </th>
+                            <th class="px-3 lg:px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">
+                                <div class="flex items-center space-x-2">
+                                    <span>⚡</span>
+                                    <span>Detail</span>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="bg-white divide-y divide-gray-100">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SPREADSHEET_ID = '12wNW3Erjr5sgYz1CpWcc907f1AW7kyoHN8zhiyPPUUw';
+        const API_KEY = 'AIzaSyBhiKDVDH4fle5_EqAIaA05YjpxVMEBYZM';
+        const SHEET_NAME = 'EBIFRY';
+        
+        let allData = [];
+        let filteredData = [];
+        let brandChart = null;
+        let stockChart = null;
+        let trendChart = null;
+        let topBrandChart = null;
+        let currentSort = { field: 'brand', order: 'asc' };
+
+        async function loadData() {
+            try {
+                document.getElementById('loadingState').classList.remove('hidden');
+                document.getElementById('errorState').classList.add('hidden');
+                document.getElementById('tableContainer').classList.add('hidden');
+                
+                // Get sheet data
+                const sheetResponse = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}?key=${API_KEY}`
+                );
+                
+                if (!sheetResponse.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+                
+                const sheetData = await sheetResponse.json();
+                const rows = sheetData.values || [];
+                
+                if (rows.length === 0) {
+                    throw new Error('No data found');
+                }
+
+                // Get file modification time from Drive API
+                let lastModified = new Date().toLocaleString('id-ID');
+                try {
+                    const driveResponse = await fetch(
+                        `https://www.googleapis.com/drive/v3/files/${SPREADSHEET_ID}?fields=modifiedTime&key=${API_KEY}`
+                    );
+                    if (driveResponse.ok) {
+                        const driveData = await driveResponse.json();
+                        lastModified = new Date(driveData.modifiedTime).toLocaleString('id-ID');
+                    }
+                } catch (driveError) {
+                    console.warn('Could not fetch drive modification time:', driveError);
+                }
+                
+                // Process data (skip header row)
+                allData = rows.slice(1).map((row, index) => ({
+                    id: index,
+                    namaDetailMc: row[0] || '',
+                    namaFileExcel: row[1] || '',
+                    brandSize: row[2] || '',
+                    brand: row[3] || '',
+                    order: row[4] || '',
+                    assortment: row[5] || '',
+                    etd1: row[6] || '',
+                    shipmentPlan: row[7] || '',
+                    etd2: row[8] || '',
+                    stock: parseInt(row[9]) || 0,
+                    lama: row[10] || '',
+                    pr: row[11] || '',
+                    polos: row[12] || '',
+                    karantina: row[13] || '',
+                    estimasi: row[14] || '',
+                    total: parseInt(row[15]) || 0
+                }));
+                
+                filteredData = [...allData];
+                updateStats();
+                updateFilters();
+                renderTable();
+                showNotification('Data berhasil dimuat!', 'success');
+                
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('tableContainer').classList.remove('hidden');
+                document.getElementById('lastUpdate').textContent = `Terakhir diubah: ${lastModified}`;
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('errorState').classList.remove('hidden');
+            }
+        }
+
+        function updateStats() {
+            const totalItems = allData.length;
+            const totalStock = allData.reduce((sum, item) => sum + item.stock, 0);
+            const lowStock = allData.filter(item => item.stock < 100).length;
+            const brands = new Set(allData.map(item => item.brand).filter(brand => brand)).size;
+            
+            document.getElementById('totalItems').textContent = totalItems.toLocaleString('id-ID');
+            document.getElementById('totalStock').textContent = totalStock.toLocaleString('id-ID');
+            document.getElementById('lowStock').textContent = lowStock.toLocaleString('id-ID');
+            document.getElementById('totalBrands').textContent = brands.toLocaleString('id-ID');
+        }
+
+        function updateFilters() {
+            const brandFilter = document.getElementById('brandFilter');
+            const brands = [...new Set(allData.map(item => item.brand).filter(brand => brand))].sort();
+            
+            brandFilter.innerHTML = '<option value="">Semua Brand</option>';
+            brands.forEach(brand => {
+                const option = document.createElement('option');
+                option.value = brand;
+                option.textContent = brand;
+                brandFilter.appendChild(option);
+            });
+        }
+
+        function getStockStatus(stock) {
+            if (stock < 100) return { text: 'Rendah', class: 'bg-red-100 text-red-800' };
+            if (stock < 500) return { text: 'Sedang', class: 'bg-yellow-100 text-yellow-800' };
+            return { text: 'Tinggi', class: 'bg-green-100 text-green-800' };
+        }
+
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-500'
+            };
+            
+            notification.className = `notification ${colors[type]} text-white px-6 py-4 rounded-lg shadow-lg`;
+            notification.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">✕</button>
+                </div>
+            `;
+            
+            container.appendChild(notification);
+            setTimeout(() => notification.classList.add('show'), 100);
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        function showChartModal() {
+            document.getElementById('chartModal').classList.remove('hidden');
+            setTimeout(() => {
+                updateAllCharts();
+            }, 100);
+        }
+
+        function hideChartModal() {
+            document.getElementById('chartModal').classList.add('hidden');
+        }
+
+        function updateAllCharts() {
+            updateBrandChart();
+            updateStockChart();
+            updateTrendChart();
+            updateTopBrandChart();
+        }
+
+        function updateBrandChart() {
+            const ctx = document.getElementById('brandChart').getContext('2d');
+            
+            if (brandChart) {
+                brandChart.destroy();
+            }
+            
+            const brandData = {};
+            allData.forEach(item => {
+                if (item.brand) {
+                    brandData[item.brand] = (brandData[item.brand] || 0) + item.stock;
+                }
+            });
+            
+            const sortedBrands = Object.entries(brandData)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10);
+            
+            brandChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedBrands.map(([brand]) => brand),
+                    datasets: [{
+                        label: 'Total Stok',
+                        data: sortedBrands.map(([,stock]) => stock),
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateStockChart() {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+            
+            if (stockChart) {
+                stockChart.destroy();
+            }
+            
+            const lowStock = allData.filter(item => item.stock < 100).length;
+            const mediumStock = allData.filter(item => item.stock >= 100 && item.stock <= 500).length;
+            const highStock = allData.filter(item => item.stock > 500).length;
+            
+            stockChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Stok Rendah', 'Stok Sedang', 'Stok Tinggi'],
+                    datasets: [{
+                        data: [lowStock, mediumStock, highStock],
+                        backgroundColor: [
+                            'rgba(239, 68, 68, 0.8)',
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(34, 197, 94, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(239, 68, 68, 1)',
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(34, 197, 94, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTrendChart() {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            
+            if (trendChart) {
+                trendChart.destroy();
+            }
+            
+            // Simulasi data trend bulanan
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'];
+            const trendData = months.map(() => Math.floor(Math.random() * 1000) + 500);
+            
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Total Stok',
+                        data: trendData,
+                        borderColor: 'rgba(34, 197, 94, 1)',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTopBrandChart() {
+            const ctx = document.getElementById('topBrandChart').getContext('2d');
+            
+            if (topBrandChart) {
+                topBrandChart.destroy();
+            }
+            
+            const brandData = {};
+            allData.forEach(item => {
+                if (item.brand) {
+                    brandData[item.brand] = (brandData[item.brand] || 0) + item.stock;
+                }
+            });
+            
+            const top5Brands = Object.entries(brandData)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5);
+            
+            topBrandChart = new Chart(ctx, {
+                type: 'polarArea',
+                data: {
+                    labels: top5Brands.map(([brand]) => brand),
+                    datasets: [{
+                        data: top5Brands.map(([,stock]) => stock),
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(34, 197, 94, 0.8)',
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(239, 68, 68, 0.8)',
+                            'rgba(147, 51, 234, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(34, 197, 94, 1)',
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(239, 68, 68, 1)',
+                            'rgba(147, 51, 234, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Header
+            doc.setFontSize(20);
+            doc.text('Laporan Monitoring Ebi Fry', 20, 20);
+            
+            doc.setFontSize(12);
+            doc.text(`Tanggal: ${new Date().toLocaleDateString('id-ID')}`, 20, 30);
+            doc.text(`Total Items: ${allData.length}`, 20, 40);
+            doc.text(`Total Stock: ${allData.reduce((sum, item) => sum + item.stock, 0).toLocaleString('id-ID')}`, 20, 50);
+            
+            // Table data
+            const tableData = filteredData.map(item => [
+                item.brand,
+                item.brandSize,
+                item.order,
+                item.stock.toLocaleString('id-ID'),
+                item.total.toLocaleString('id-ID'),
+                item.etd2 || item.etd1,
+                getStockStatus(item.stock).text
+            ]);
+            
+            doc.autoTable({
+                head: [['Brand', 'Size', 'Order', 'Stock', 'Total', 'ETD', 'Status']],
+                body: tableData,
+                startY: 60,
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 2
+                },
+                headStyles: {
+                    fillColor: [59, 130, 246],
+                    textColor: 255
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245]
+                }
+            });
+            
+            doc.save(`ebi-fry-report-${new Date().toISOString().split('T')[0]}.pdf`);
+            showNotification('Laporan PDF berhasil diunduh!', 'success');
+        }
+
+        function exportToExcel() {
+            const headers = ['Brand', 'Size', 'Order', 'Stock', 'Total', 'ETD', 'Status'];
+            const csvContent = [
+                headers.join(','),
+                ...filteredData.map(item => [
+                    `"${item.brand}"`,
+                    `"${item.brandSize}"`,
+                    `"${item.order}"`,
+                    item.stock,
+                    item.total,
+                    `"${item.etd2 || item.etd1}"`,
+                    `"${getStockStatus(item.stock).text}"`
+                ].join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `ebi-fry-stock-${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showNotification('Data berhasil diekspor!', 'success');
+        }
+
+        function sortData() {
+            const sortBy = document.getElementById('sortBy').value;
+            const sortOrder = document.getElementById('sortOrder').value;
+            
+            filteredData.sort((a, b) => {
+                let aVal = a[sortBy];
+                let bVal = b[sortBy];
+                
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+                
+                if (sortOrder === 'asc') {
+                    return aVal > bVal ? 1 : -1;
+                } else {
+                    return aVal < bVal ? 1 : -1;
+                }
+            });
+            
+            renderTable();
+        }
+
+        function showTableModal() {
+            document.getElementById('tableModal').classList.remove('hidden');
+            renderFullTable();
+        }
+
+        function hideTableModal() {
+            document.getElementById('tableModal').classList.add('hidden');
+        }
+
+        function showDetailModal(id) {
+            const item = allData.find(item => item.id === id);
+            if (!item) return;
+
+            const status = getStockStatus(item.stock);
+            const detailContent = document.getElementById('detailContent');
+            detailContent.innerHTML = `
+                <!-- Header Section -->
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 mb-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-800">${item.brand || 'N/A'}</h3>
+                            <p class="text-gray-600">${item.namaDetailMc || 'N/A'}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full ${status.class}">
+                                ${status.text}
+                            </span>
+                            <p class="text-xs text-gray-500 mt-1">ID: #${String(item.id + 1).padStart(3, '0')}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Complete Data Grid -->
+                <div class="space-y-6">
+                    <!-- Row 1: Basic Information -->
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Detail MC</label>
+                            <p class="text-sm text-gray-900 font-medium">${item.namaDetailMc || '-'}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <label class="block text-xs font-medium text-gray-500 uppercase mb-2">File Excel</label>
+                            <p class="text-sm text-gray-900">${item.namaFileExcel || '-'}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Brand Size</label>
+                            <p class="text-sm text-gray-900 font-medium">${item.brandSize || '-'}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Brand</label>
+                            <p class="text-sm text-gray-900 font-bold text-blue-600">${item.brand || '-'}</p>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Order & Assortment -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Order</label>
+                            <p class="text-sm text-gray-900">${item.order || '-'}</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Assortment</label>
+                            <p class="text-sm text-gray-900">${item.assortment || '-'}</p>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Timeline Information -->
+                    <div class="bg-blue-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-gray-800 mb-4 flex items-center">
+                            <span class="mr-2">📅</span> Timeline & Shipping
+                        </h4>
+                        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">ETD 1</label>
+                                <p class="text-sm text-gray-900 font-medium">${item.etd1 || '-'}</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Shipment Plan</label>
+                                <p class="text-sm text-gray-900">${item.shipmentPlan || '-'}</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">ETD 2</label>
+                                <p class="text-sm text-gray-900 font-medium text-green-600">${item.etd2 || '-'}</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Estimasi</label>
+                                <p class="text-sm text-gray-900">${item.estimasi || '-'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 4: Stock Information -->
+                    <div class="bg-green-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-gray-800 mb-4 flex items-center">
+                            <span class="mr-2">📊</span> Stock & Inventory
+                        </h4>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <div class="text-center">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Current Stock</label>
+                                <p class="text-3xl font-bold text-blue-600">${item.stock.toLocaleString('id-ID')}</p>
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Total</label>
+                                <p class="text-3xl font-bold text-green-600">${item.total.toLocaleString('id-ID')}</p>
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Lama</label>
+                                <p class="text-lg text-gray-900">${item.lama || '-'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 5: Process Status -->
+                    <div class="bg-yellow-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-gray-800 mb-4 flex items-center">
+                            <span class="mr-2">⚙️</span> Process Status
+                        </h4>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <div class="text-center p-4 bg-white rounded-lg border-2 ${item.pr ? 'border-green-200 bg-green-50' : 'border-gray-200'}">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">PR Status</label>
+                                <p class="text-lg font-bold ${item.pr ? 'text-green-600' : 'text-gray-400'}">${item.pr || 'Belum Ada'}</p>
+                            </div>
+                            <div class="text-center p-4 bg-white rounded-lg border-2 ${item.polos ? 'border-green-200 bg-green-50' : 'border-gray-200'}">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Polos Status</label>
+                                <p class="text-lg font-bold ${item.polos ? 'text-green-600' : 'text-gray-400'}">${item.polos || 'Belum Ada'}</p>
+                            </div>
+                            <div class="text-center p-4 bg-white rounded-lg border-2 ${item.karantina ? 'border-green-200 bg-green-50' : 'border-gray-200'}">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-2">Karantina Status</label>
+                                <p class="text-lg font-bold ${item.karantina ? 'text-green-600' : 'text-gray-400'}">${item.karantina || 'Belum Ada'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 6: Analytics & Summary -->
+                    <div class="bg-purple-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-gray-800 mb-4 flex items-center">
+                            <span class="mr-2">📈</span> Analytics Summary
+                        </h4>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="text-center p-3 bg-white rounded-lg border">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-1">Stock Ratio</label>
+                                <p class="text-xl font-bold text-blue-600">${item.total > 0 ? Math.round((item.stock / item.total) * 100) : 0}%</p>
+                            </div>
+                            <div class="text-center p-3 bg-white rounded-lg border">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-1">Difference</label>
+                                <p class="text-xl font-bold ${(item.total - item.stock) >= 0 ? 'text-orange-600' : 'text-red-600'}">${(item.total - item.stock).toLocaleString('id-ID')}</p>
+                            </div>
+                            <div class="text-center p-3 bg-white rounded-lg border">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-1">Status Level</label>
+                                <p class="text-xl font-bold ${status.class.includes('red') ? 'text-red-600' : status.class.includes('yellow') ? 'text-yellow-600' : 'text-green-600'}">${status.text}</p>
+                            </div>
+                            <div class="text-center p-3 bg-white rounded-lg border">
+                                <label class="block text-xs font-medium text-gray-500 uppercase mb-1">Completion</label>
+                                <p class="text-xl font-bold text-purple-600">${[item.pr, item.polos, item.karantina].filter(x => x).length}/3</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function hideDetailModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        function renderFullTable() {
+            const tbody = document.getElementById('fullTableBody');
+            tbody.innerHTML = '';
+            
+            allData.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.namaDetailMc}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.namaFileExcel}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.brandSize}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${item.brand}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.order}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.assortment}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.etd1}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.shipmentPlan}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.etd2}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-blue-600">${item.stock.toLocaleString('id-ID')}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.lama}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.pr}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.polos}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.karantina}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${item.estimasi}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-green-600">${item.total.toLocaleString('id-ID')}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <button onclick="showDetailModal(${item.id})" class="text-blue-600 hover:text-blue-900">👁️ Detail</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            document.getElementById('showingCount').textContent = filteredData.length.toLocaleString('id-ID');
+            document.getElementById('totalCount').textContent = allData.length.toLocaleString('id-ID');
+            
+            filteredData.forEach(item => {
+                const status = getStockStatus(item.stock);
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 fade-in';
+                
+                row.innerHTML = `
+                    <td class="px-3 lg:px-6 py-4">
+                        <div class="font-medium text-gray-900 text-sm lg:text-base">${item.brand}</div>
+                        <div class="text-xs lg:text-sm text-gray-500 lg:hidden">${item.brandSize}</div>
+                        <div class="text-xs text-gray-400 truncate max-w-32 lg:max-w-none">${item.namaDetailMc}</div>
+                    </td>
+                    <td class="px-3 lg:px-6 py-4 text-sm text-gray-900 mobile-hidden">${item.brandSize}</td>
+                    <td class="px-3 lg:px-6 py-4 text-sm text-gray-900 mobile-hidden">${item.order}</td>
+                    <td class="px-3 lg:px-6 py-4">
+                        <div class="text-sm lg:text-base font-bold text-blue-600">${item.stock.toLocaleString('id-ID')}</div>
+                        <div class="text-xs text-gray-500">Total: ${item.total.toLocaleString('id-ID')}</div>
+                    </td>
+                    <td class="px-3 lg:px-6 py-4 text-sm text-gray-900 mobile-hidden">${item.etd2 || item.etd1}</td>
+                    <td class="px-3 lg:px-6 py-4">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${status.class}">
+                            ${status.text}
+                        </span>
+                    </td>
+                    <td class="px-3 lg:px-6 py-4">
+                        <button onclick="showDetailModal(${item.id})" class="btn-professional bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs flex items-center space-x-1">
+                            <span>👁️</span>
+                            <span class="mobile-hidden lg:inline">Detail</span>
+                        </button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+
+
+        function applyFilters() {
+            const brandFilter = document.getElementById('brandFilter').value;
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+            
+            filteredData = allData.filter(item => {
+                const matchesBrand = !brandFilter || item.brand === brandFilter;
+                
+                // Smart search across ALL fields
+                const matchesSearch = !searchInput || 
+                    item.namaDetailMc.toLowerCase().includes(searchInput) ||
+                    item.namaFileExcel.toLowerCase().includes(searchInput) ||
+                    item.brandSize.toLowerCase().includes(searchInput) ||
+                    item.brand.toLowerCase().includes(searchInput) ||
+                    item.order.toLowerCase().includes(searchInput) ||
+                    item.assortment.toLowerCase().includes(searchInput) ||
+                    item.etd1.toLowerCase().includes(searchInput) ||
+                    item.shipmentPlan.toLowerCase().includes(searchInput) ||
+                    item.etd2.toLowerCase().includes(searchInput) ||
+                    item.stock.toString().includes(searchInput) ||
+                    item.lama.toLowerCase().includes(searchInput) ||
+                    item.pr.toLowerCase().includes(searchInput) ||
+                    item.polos.toLowerCase().includes(searchInput) ||
+                    item.karantina.toLowerCase().includes(searchInput) ||
+                    item.estimasi.toLowerCase().includes(searchInput) ||
+                    item.total.toString().includes(searchInput);
+                
+                return matchesBrand && matchesSearch;
+            });
+            
+            renderTable();
+        }
+
+        // Toggle filter panel
+        function toggleFilters() {
+            const filtersPanel = document.getElementById('advancedFilters');
+            const toggleIcon = document.getElementById('filterToggleIcon');
+            
+            if (filtersPanel.classList.contains('hidden')) {
+                filtersPanel.classList.remove('hidden');
+                filtersPanel.style.maxHeight = '0px';
+                filtersPanel.style.overflow = 'hidden';
+                filtersPanel.style.transition = 'max-height 0.3s ease-out';
+                
+                setTimeout(() => {
+                    filtersPanel.style.maxHeight = filtersPanel.scrollHeight + 'px';
+                }, 10);
+                
+                toggleIcon.style.transform = 'rotate(180deg)';
+            } else {
+                filtersPanel.style.maxHeight = '0px';
+                toggleIcon.style.transform = 'rotate(0deg)';
+                
+                setTimeout(() => {
+                    filtersPanel.classList.add('hidden');
+                    filtersPanel.style.maxHeight = '';
+                    filtersPanel.style.overflow = '';
+                    filtersPanel.style.transition = '';
+                }, 300);
+            }
+        }
+
+        // Quick filter functions
+        function quickFilter(type) {
+            const searchInput = document.getElementById('searchInput');
+            const brandFilter = document.getElementById('brandFilter');
+            
+            // Reset filters first
+            searchInput.value = '';
+            brandFilter.value = '';
+            
+            switch(type) {
+                case 'low':
+                    filteredData = allData.filter(item => item.stock < 100);
+                    break;
+                case 'medium':
+                    filteredData = allData.filter(item => item.stock >= 100 && item.stock <= 500);
+                    break;
+                case 'high':
+                    filteredData = allData.filter(item => item.stock > 500);
+                    break;
+                case 'all':
+                default:
+                    filteredData = [...allData];
+                    break;
+            }
+            
+            renderTable();
+            showNotification(`Filter ${type === 'low' ? 'stok rendah' : type === 'medium' ? 'stok sedang' : type === 'high' ? 'stok tinggi' : 'semua data'} diterapkan!`, 'success');
+        }
+
+        // Event listeners
+        document.getElementById('tableBtn').addEventListener('click', showTableModal);
+        document.getElementById('closeTable').addEventListener('click', hideTableModal);
+        document.getElementById('closeDetail').addEventListener('click', hideDetailModal);
+        document.getElementById('chartBtn').addEventListener('click', showChartModal);
+        document.getElementById('closeChart').addEventListener('click', hideChartModal);
+        document.getElementById('exportPdfBtn').addEventListener('click', exportToPDF);
+        document.getElementById('exportBtn').addEventListener('click', exportToExcel);
+        document.getElementById('filterToggle').addEventListener('click', toggleFilters);
+        
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            const icon = document.getElementById('refreshIcon');
+            icon.style.transform = 'rotate(360deg)';
+            icon.style.transition = 'transform 0.5s';
+            setTimeout(() => {
+                icon.style.transform = 'rotate(0deg)';
+                icon.style.transition = '';
+            }, 500);
+            loadData();
+        });
+
+        document.getElementById('brandFilter').addEventListener('change', applyFilters);
+        document.getElementById('searchInput').addEventListener('input', applyFilters);
+        document.getElementById('sortBy').addEventListener('change', sortData);
+        document.getElementById('sortOrder').addEventListener('change', sortData);
+
+        // Load data on page load
+        loadData();
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'984b36f96723ce66',t:'MTc1ODgxMDU3Ny4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
